@@ -11,6 +11,8 @@ class PersonTracker:
         
         # self.cap = cv2.VideoCapture(camera_index)   #FOR JETSON NANO
         self.cap = cv2.VideoCapture(1, cv2.CAP_DSHOW) #FOR WINDOWS
+
+        # self.flight_commander()   #instance of class for sending commands to orange cube
         
         if not self.cap.isOpened():
             raise Exception("***Eror: Camera Loading Error***")
@@ -71,11 +73,15 @@ class PersonTracker:
                         cv2.circle(frame, (target_center_x, target_center_y), 5, (0, 255, 0), -1)
 
                         tracking_active = True
+
+                        # self.flight_commander.send velocity command(offset_x, offset_y)
                     
                 if not tracking_active:     #if no target found
                     self.target_id = None   #reset target
                     cv2.putText(frame, "SEARCHING FOR TARGET...", (20, 50), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    
+                    # self.flight_commander.send velocity command(0, 0)
                         
                 # Display cam feed
                 cv2.imshow("ONNX Vision Tracker", frame)
