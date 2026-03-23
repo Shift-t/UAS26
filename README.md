@@ -10,6 +10,21 @@ This project is a simple onboard mission script for a drone that:
 
 The code is written to be easy to follow and easy to test in simulation before touching real hardware.
 
+## Setup
+
+Install the Python dependencies first:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Main runtime packages used by this project:
+
+- `ultralytics` for person detection / tracking
+- `opencv-python` for camera input and video display
+- `pymavlink` for communication with ArduPilot / OrangeCube
+- `onnxruntime` for running the exported YOLO ONNX model
+
 ## What This Project Is For
 
 The intended hardware setup is:
