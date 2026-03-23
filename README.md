@@ -10,6 +10,24 @@ This project is a simple onboard mission script for a drone that:
 
 The code is written to be easy to follow and easy to test in simulation before touching real hardware.
 
+## Quick Links
+
+- [Setup](#setup)
+- [What This Project Is For](#what-this-project-is-for)
+- [Mission Overview](#mission-overview)
+- [Project Layout](#project-layout)
+- [How The Code Thinks](#how-the-code-thinks)
+- [How Person Tracking Works](#how-person-tracking-works)
+- [How MAVLink Is Used](#how-mavlink-is-used)
+- [Running The Project](#running-the-project)
+- [Config Files](#config-files)
+- [Current Behavior After Payload Drop](#current-behavior-after-payload-drop)
+- [Recommended Way To Learn The Code](#recommended-way-to-learn-the-code)
+- [Important Limitations](#important-limitations)
+- [Safety Notes](#safety-notes)
+- [Jetson + OrangeCube + Mission Planner Connection Guide](#jetson--orangecube--mission-planner-connection-guide)
+- [OrangeCube / ArduPilot / Motor Setup For This Code](#orangecube--ardupilot--motor-setup-for-this-code)
+
 ## Setup
 
 Install the Python dependencies first:
@@ -405,3 +423,188 @@ The exact Linux device name depends on your Jetson carrier board and UART mappin
   - https://docs.cubepilot.org/user-guides/autopilot/the-cube/introduction/interface-specifications
 - CubePilot Mission Planner setup:
   - https://docs.cubepilot.org/user-guides/autopilot/the-cube/setup/mission-planner
+
+## OrangeCube / ArduPilot / Motor Setup For This Code
+
+This section is the practical setup checklist for the team that is wiring and configuring the aircraft.
+
+The code in this repository assumes:
+
+- the OrangeCube is already running the correct ArduPilot firmware
+- the receiver is already working
+- the motors and ESCs are already configured correctly
+- the Jetson only needs to send mission-level commands over MAVLink
+
+In other words, this code is not doing low-level motor control. ArduPilot does that.
+
+### 1. Load The Correct Firmware
+
+For a multirotor drone, load `ArduCopter` onto the OrangeCube using Mission Planner.
+
+Then make sure the vehicle frame type in ArduPilot matches the real airframe:
+
+- quad X
+- quad plus
+- hex
+- etc.
+
+This matters because ArduPilot uses the chosen frame type to assign motor outputs correctly.
+
+### 2. Connect ESCs And Motors Correctly
+
+Each ESC signal wire must go to the correct motor output on the OrangeCube/carrier board.
+
+Do not guess motor order. Use the ArduPilot motor-order diagram for your chosen frame type and then confirm it in Mission Planner using Motor Test.
+
+Good workflow:
+
+1. Set the frame class and frame type in ArduPilot.
+2. Wire ESC signal outputs to the expected motor outputs.
+3. Remove all propellers.
+4. Use Mission Planner Motor Test to confirm the right motor spins when expected.
+5. Confirm each motor spins in the correct direction.
+6. Reverse any motor that spins the wrong way.
+
+### 3. Calibrate The Radio Receiver
+
+Your FlySky receiver must be fully working in Mission Planner before trying autonomous control.
+
+At minimum:
+
+- transmitter bound to receiver
+- receiver connected correctly to the OrangeCube
+- sticks move correctly in Mission Planner Radio Calibration
+- flight mode switch works
+- manual pilot takeover is available
+
+This matters because the receiver is your backup and manual-control path.
+
+### 4. Run Mandatory Sensor Setup In Mission Planner
+
+Before trusting any companion-computer commands, complete the normal ArduPilot setup:
+
+- accelerometer calibration
+- compass calibration if used
+- radio calibration
+- flight mode setup
+- failsafe setup
+
+The Jetson code assumes the flight controller is already healthy and flyable on its own.
+
+### 5. Configure The Jetson MAVLink Port
+
+If the Jetson is connected to `TELEM2`, use:
+
+- `SERIAL2_PROTOCOL = 2`
+- `SERIAL2_BAUD = 115`
+
+If only TX/RX/GND are wired:
+
+- `BRD_SER2_RTSCTS = 0`
+
+If RTS/CTS are also wired correctly:
+
+- `BRD_SER2_RTSCTS = 1`
+
+These settings allow the Jetson to communicate with the OrangeCube over MAVLink2.
+
+### 6. Give Mission Planner Its Own Link
+
+Recommended:
+
+- Jetson on `TELEM2`
+- Mission Planner on `TELEM1`, USB, or telemetry radio
+
+This keeps setup and debugging much simpler.
+
+### 7. Configure The Payload Output Correctly
+
+Your code uses `MAV_CMD_DO_SET_SERVO` to move the payload release servo.
+
+That means the output used for payload release must:
+
+- be a free output
+- not be assigned to a motor
+- not already be assigned to another flight function
+
+Recommended starting approach for Copter:
+
+- put the payload servo on an unused `AUX OUT`
+- set the matching `SERVOx_FUNCTION = 0`
+- match `x` to the channel number used in your config file
+
+Example:
+
+If your config says:
+
+```json
+"payload_servo_channel": 9
+```
+
+then the matching ArduPilot output must allow direct servo control on channel 9.
+
+If that output is already assigned to another function, `DO_SET_SERVO` will not work correctly.
+
+### 8. Match The Config File To The Aircraft
+
+The following values in this repository must match the real aircraft setup:
+
+- `connection_string`
+- `baud`
+- `guided_mode_name`
+- `payload_servo_channel`
+- `payload_hold_pwm`
+- `payload_drop_pwm`
+
+And these values usually need tuning:
+
+- `alignment_gain_x`
+- `alignment_gain_y`
+- `alignment_max_speed_mps`
+- `center_tolerance_x`
+- `center_tolerance_y`
+- `center_hold_s`
+
+### 9. First Integration Test Order
+
+Do not jump straight to full autonomy.
+
+Use this order:
+
+1. Mission Planner only
+   - verify sensors, receiver, modes, and motor outputs
+2. Mission Planner Motor Test
+   - verify motor numbering and spin direction
+3. ESC calibration if your ESC type requires it
+4. Jetson heartbeat only
+   - verify the Jetson can talk MAVLink to the OrangeCube
+5. Jetson-guided takeoff in a safe test setup
+6. Vision-only replay testing
+7. Combined testing
+
+### 10. What “Seamless Communication” Means Here
+
+If setup is correct, the system should behave like this:
+
+- receiver gives pilot commands to OrangeCube
+- Mission Planner monitors and configures OrangeCube
+- Jetson sends mission commands to OrangeCube over MAVLink
+- OrangeCube mixes all of this with its own stabilization and sensor logic
+- motors and ESCs are still controlled by ArduPilot, not by Python
+
+That is the correct architecture for this project.
+
+### Extra References For The Team
+
+- ESC calibration:
+  - https://ardupilot.org/copter/docs/esc-calibration.html
+- Connect ESCs and motors:
+  - https://ardupilot.org/copter/docs/connect-escs-and-motors.html
+- Radio calibration:
+  - https://ardupilot.org/planner/docs/common-radio-control-calibration.html
+- Autopilot output functions:
+  - https://ardupilot.org/rover/docs/common-rcoutput-mapping.html
+- Servo control / payload outputs:
+  - https://ardupilot.org/copter/docs/common-servo.html
+- MAVLink servo command behavior:
+  - https://ardupilot.org/dev/docs/mavlink-move-servo.html
