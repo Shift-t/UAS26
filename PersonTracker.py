@@ -94,11 +94,15 @@ class PersonTracker:
             forward_speed = 0
             right_speed = 0
 
+        '''
+        #Uncomment this part if you want to control the vertical speed
         area_diff = self.target_ideal_area - target_area
         if abs(area_diff) > self.vertical_deadzone:
             vertical_speed = 0.00002 * area_diff
         else:
             vertical_speed = 0
+        '''
+        vertical_speed = 0
 
         yaw_rate = 0
 
