@@ -8,8 +8,6 @@ This project is a simple onboard mission script for a drone that:
 4. drops a payload once,
 5. then resumes the search path until the pilot lands the vehicle.
 
-The code is written to be easy to follow and easy to test in simulation before touching real hardware.
-
 ## Quick Links
 
 - [Setup](#setup)
