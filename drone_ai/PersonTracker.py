@@ -82,7 +82,8 @@ class PersonTracker:
 
                     cv2.putText(frame, status_text, (20, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
-                    self.drone.send_velocity_cmd(0,0,0,0)   #No target, maintain position
+                    if tracking_allowed:
+                        self.drone.send_velocity_cmd(0,0,0,0)   #No target, maintain position
                         
                 # Display cam feed
                 cv2.imshow("ONNX Vision Tracker", frame)

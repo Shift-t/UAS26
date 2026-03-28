@@ -8,14 +8,6 @@ class DroneController:
         self._last_heartbeat = self.vehicle.wait_heartbeat()
         self._last_mode = self._decode_mode(self._last_heartbeat)
         self._last_armed = self._decode_armed(self._last_heartbeat)
-    
-    def set_mode(self, mode_name):
-        mode_id = self.vehicle.mode_mapping()[mode_name]
-        self.vehicle.mav.set_mode_send(
-            self.vehicle.target_system,
-            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-            mode_id
-        )
 
     def _decode_mode(self, heartbeat):
         if heartbeat is None:
