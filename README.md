@@ -14,9 +14,31 @@
 ## Code Checklist
 - In *main*:
   - Comment out the UDP simulation string and uncomment the jetson serial string
+  - Change this:
+  ```bash
+  drone = DroneController(connection_string = 'udp:172.25.48.1:14551', baud_rate = 115200) #Use when simulating
+
+  # drone = DroneController(connection_string='/dev/ttyTHS1', baud_rate=921600) #Use when on jetson
+  ```
+  - To this:
+  ```bash
+  # drone = DroneController(connection_string = 'udp:172.25.48.1:14551', baud_rate = 115200) #Use when simulating
+  
+  drone = DroneController(connection_string='/dev/ttyTHS1', baud_rate=921600) #Use when on jetson
+  ```
+  
 - In *PersonTracker*:
   - Comment out the Windows camera setting and uncomment the jetson camera setting
-
+  - Change this:
+  ```bash
+  # self.cap = cv2.VideoCapture(camera_index)   #FOR JETSON NANO
+  self.cap = cv2.VideoCapture(2, cv2.CAP_DSHOW) #FOR WINDOWS
+  ```
+  - To this:
+  ```bash
+  self.cap = cv2.VideoCapture(camera_index)   #FOR JETSON NANO
+  # self.cap = cv2.VideoCapture(2, cv2.CAP_DSHOW) #FOR WINDOWS
+  ```
 ## Jetson Nano Setup
 - Open the terminal and run the following command to allow your user profile to read and write to the UART port (/dev/ttyTHS1) and access the USB camera:
   - sudo usermod -a -G dialout $USER
