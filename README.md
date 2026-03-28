@@ -1,12 +1,12 @@
 ## Wiring up the Jetson to the Cube
-- Jetson Nano --> Orange CUbe
+- Jetson Orin Nano --> Orange Cube
 - Pin 8 (UART_1 TX) --> Pin 3 (RX)
 - Pin 10 (UART_1 RX) --> Pin 2 (TX)
 - Pin 6 (GND) --> Pin 6 (GND)
 
 ## Flight Controller Config
 - In mission planner go to *Config > Full Parameter List*
-- Update the following parameters to configure the jetson nano on the TELEM 2 port:
+- Update the following parameters to configure the jetson orin nano on the TELEM 2 port:
   - SERIAL2_PROTOCOL = 2
   - SERIAL2_BAUD = 921 (921600 baud rate)
 - Click Write Params and reboot the flight controller
@@ -15,13 +15,13 @@
 - In *main*:
   - Comment out the UDP simulation string and uncomment the jetson serial string
   - Change this:
-  ```bash
+  ```python
   drone = DroneController(connection_string = 'udp:172.25.48.1:14551', baud_rate = 115200) #Use when simulating
 
   # drone = DroneController(connection_string='/dev/ttyTHS1', baud_rate=921600) #Use when on jetson
   ```
   - To this:
-  ```bash
+  ```python
   # drone = DroneController(connection_string = 'udp:172.25.48.1:14551', baud_rate = 115200) #Use when simulating
   
   drone = DroneController(connection_string='/dev/ttyTHS1', baud_rate=921600) #Use when on jetson
@@ -39,27 +39,43 @@
   self.cap = cv2.VideoCapture(camera_index)   #FOR JETSON NANO
   # self.cap = cv2.VideoCapture(2, cv2.CAP_DSHOW) #FOR WINDOWS
   ```
-## Jetson Nano Setup
+## Jetson Orin Nano Setup
 - Open the terminal and run the following command to allow your user profile to read and write to the UART port (/dev/ttyTHS1) and access the USB camera:
-  - sudo usermod -a -G dialout $USER
-  - sudo usermod -a -G video $USER
-  - sudo systemctl stop nvgetty
-  - sudo systemctl disable nvgetty
-  - udevadm trigger
-  - reboot to apply
-  - make sure all the files are placed in the same directory
-- Run the following command to install the necessary python dependencies
-  - sudo apt-get update
-  - sudo apt-get install python3-opencv
-  - pip3 install pymavlink ultralytics numpy
+  ```bash
+  sudo usermod -a -G dialout $USER
+  sudo usermod -a -G video $USER
+  sudo systemctl stop nvgetty
+  sudo systemctl disable nvgetty
+  udevadm trigger
+  ```
+  - reboot to apply the permission changes
+  - Open a new terminal. Ubuntu 22.04 requires Python packages to be installed in a Virtual Environment. Create and activate it using the following commands:
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y python3-venv libopenblas-dev python3-opencv
+  python3 -m venv drone_env --system-site-packages
+  source drone_env/bin/activate
+  ```
+  - note: You will need to run source drone_env/bin/activate every time you open a new terminal to run your drone code
+  - Install NVIDIA's GPU-accelerated Pytorch for JetPack 6.0:
+  ```bash
+  pip3 install torch torchvision --index-url https://pypi.jetson-ai-lab.io/jp6/cu122
+  ```
+  - install the remaining python dependencies inside the environment
+  ```bash
+  pip3 install pymavlink ultralytics numpy
+  ```
 
 ## Execution Steps
 - Ensure all python files and the model file are placed in the same directory.
 - Power on the drone system and wait for the orange cube to complete its boot sequence and acquire a GPS lock.
 - note: the code assumes the drone has already taken off since otherwise the camera, which is placed at the bottom, will not be able to see anything.
 - switch the drone's flight mode to **guided**
-- change directory to the folder containing the python files and run the main script on the jetson nano:
-  - python3 main.py
+- activate the environment, change directory to the folder containing the python files and run the main script on the jetson nano:
+```bash
+source drone_env/bin/activate
+python3 main.py
+```
 
 ## Troubleshooting Guide from gpt
 
@@ -79,7 +95,8 @@
 * **Fix:** ArduPilot will reject GUIDED mode if it does not have a good GPS fix (EKF variance is too high). Ensure you are outdoors with a strong GPS signal, or if indoors, ensure your optical flow/lidar sensors are correctly configured and healthy.
 
 **Issue: The video feed is extremely laggy or the script gets "Killed".**
-* **Cause:** The Jetson Nano is running out of memory (OOM) or the ONNX model is heavily taxing the CPU instead of the GPU.
-* **Fix:** Ensure you have created a Swap File (at least 4GB) on your Jetson Nano to prevent memory crashes during YOLO inference.
+* **Cause:** The Jetson Orin Nano is running out of memory (OOM), or the TensorRT engine is failing to load on the GPU.
+* **Fix 1:** Ensure you exported the YOLO `.engine` file *specifically* on this exact Jetson device. TensorRT engines are tied to the exact GPU architecture they are built on; you cannot copy an `.engine` file from a PC to an Orin Nano.
+* **Fix 2:** If the terminal simply outputs "Killed", you have run out of RAM. You must create a Swap File (at least 4GB to 8GB) on your Jetson Orin Nano to prevent memory crashes during inference.
 
   
