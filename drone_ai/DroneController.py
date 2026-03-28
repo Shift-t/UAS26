@@ -5,7 +5,9 @@ from pymavlink import mavutil
 class DroneController:
     def __init__(self, connection_string, baud_rate):
         self.vehicle = mavutil.mavlink_connection(connection_string, baud = baud_rate)
-        self.vehicle.wait_heartbeat()
+        self._last_heartbeat = self.vehicle.wait_heartbeat()
+        self._last_mode = self._decode_mode(self._last_heartbeat)
+        self._last_armed = self._decode_armed(self._last_heartbeat)
     
     def set_mode(self, mode_name):
         mode_id = self.vehicle.mode_mapping()[mode_name]
@@ -14,6 +16,40 @@ class DroneController:
             mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
             mode_id
         )
+
+    def _decode_mode(self, heartbeat):
+        if heartbeat is None:
+            return None
+        return mavutil.mode_string_v10(heartbeat)
+
+    def _decode_armed(self, heartbeat):
+        if heartbeat is None:
+            return False
+        return bool(heartbeat.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+
+    def refresh_flight_state(self, blocking=False, timeout=0.0):
+        heartbeat = self.vehicle.recv_match(type='HEARTBEAT', blocking=blocking, timeout=timeout)
+        if heartbeat is None:
+            heartbeat = self.vehicle.messages.get('HEARTBEAT')
+
+        if heartbeat is not None:
+            self._last_heartbeat = heartbeat
+            self._last_mode = self._decode_mode(heartbeat)
+            self._last_armed = self._decode_armed(heartbeat)
+
+        return self._last_mode, self._last_armed
+
+    def get_current_mode(self, blocking=False, timeout=0.0):
+        mode, _ = self.refresh_flight_state(blocking=blocking, timeout=timeout)
+        return mode
+
+    def is_armed(self, blocking=False, timeout=0.0):
+        _, armed = self.refresh_flight_state(blocking=blocking, timeout=timeout)
+        return armed
+
+    def tracking_is_authorized(self, allowed_modes=('GUIDED',), blocking=False, timeout=0.0):
+        mode, armed = self.refresh_flight_state(blocking=blocking, timeout=timeout)
+        return armed and mode in allowed_modes
     
     def send_velocity_cmd(self, x, y, z, yaw):  #x = forward/backward, y = left/right, z = up/down
         self.vehicle.mav.set_position_target_local_ned_send(

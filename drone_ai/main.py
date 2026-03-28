@@ -15,7 +15,10 @@ def main():
 
     print("[MAIN] Initializing Flight Controller Connection...")
     drone = DroneController(connection_string = conn_string, baud_rate = baud_rate)
-    drone.set_mode('GUIDED')
+    mode = drone.get_current_mode(blocking=True, timeout=1.0)
+    armed = drone.is_armed()
+    print(f"[MAIN] Flight state detected: mode={mode or 'UNKNOWN'}, armed={armed}")
+    print("[MAIN] Vision will stay idle until the drone is manually put in GUIDED and armed from the ground station.")
 
     print("[MAIN] Initializing Vision Tracker...")
     tracker = PersonTracker(drone=drone, model_path=model_path, camera_index=cam_index) #camera idx normally zero for jetson nano usb cam

@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 import os
+import time
 
 class PersonTracker:
     def __init__(self, drone, model_path, camera_index):  #cam idx might be different
@@ -31,6 +32,10 @@ class PersonTracker:
         self.horizontal_deadzone_radius = int(os.getenv('HORIZONTAL_DEADZONE', '25'))   # deadzone in pixels for horizontal movements
 
         self.is_visdrone = (os.getenv('MODEL_TYPE', 'std').lower() == 'visdrone')
+        self.allowed_modes = {'GUIDED'}
+        self._last_gate_check = 0.0
+        self._tracking_enabled = False
+        self._last_gate_state = None
 
     def tracking_loop(self):
         # Main loop to capture video frames and perform detection.
@@ -41,35 +46,42 @@ class PersonTracker:
                     print("[PersonTracker] **Error: Failed to grab frame.***")
                     break
 
-                # classes=[0] to filter out the person class
-                if self.is_visdrone:
-                    results = self.model.track(frame, classes=[0, 1], conf=0.30, persist=True, verbose=False)
-                else:
-                    results = self.model.track(frame, classes=[0], conf=0.5, persist=True, verbose=False)
-
+                tracking_allowed = self._tracking_authorized()
                 tracking_active = False
 
-                if len(results[0].boxes) > 0 and results[0].boxes.id is not None:
-                    boxes = results[0].boxes.xyxy.cpu().numpy()         #grab bounding boxes 
-                    ids = results[0].boxes.id.cpu().numpy().astype(int) #grab ids for detections
-                    if self.target_id is None or self.target_id not in ids: #if theres no target currently selected
-                        self.target_id = ids[0]                             #select first detection in current frame as target
-                        print(f"Target switched to ID: {self.target_id}")
+                if tracking_allowed:
+                    if self.is_visdrone:
+                        results = self.model.track(frame, classes=[0, 1], conf=0.30, persist=True, verbose=False)
+                    else:
+                        results = self.model.track(frame, classes=[0], conf=0.5, persist=True, verbose=False)
 
-                    if self.target_id in ids:                   #if target in current frame
-                        idx = list(ids).index(self.target_id)   #grab index of target
-                        x1, y1, x2, y2 = map(int, boxes[idx])   #grab coords for target
+                    if len(results[0].boxes) > 0 and results[0].boxes.id is not None:
+                        boxes = results[0].boxes.xyxy.cpu().numpy()         #grab bounding boxes
+                        ids = results[0].boxes.id.cpu().numpy().astype(int) #grab ids for detections
+                        if self.target_id is None or self.target_id not in ids: #if theres no target currently selected
+                            self.target_id = ids[0]                             #select first detection in current frame as target
+                            print(f"Target switched to ID: {self.target_id}")
 
-                        speeds, measurements = self._calculate_velocities(x1, y1, x2, y2)
-                        self.drone.send_velocity_cmd(*speeds)
-                        self._draw_hud(frame, x1, y1, x2, y2, measurements)
+                        if self.target_id in ids:                   #if target in current frame
+                            idx = list(ids).index(self.target_id)   #grab index of target
+                            x1, y1, x2, y2 = map(int, boxes[idx])   #grab coords for target
 
-                        tracking_active = True
-                    
+                            speeds, measurements = self._calculate_velocities(x1, y1, x2, y2)
+                            self.drone.send_velocity_cmd(*speeds)
+                            self._draw_hud(frame, x1, y1, x2, y2, measurements)
+
+                            tracking_active = True
+
                 if not tracking_active:     #if no target found
                     self.target_id = None   #reset target
-                    cv2.putText(frame, "SEARCHING FOR TARGET...", (20, 50), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    status_text = "SEARCHING FOR TARGET..."
+                    status_color = (0, 0, 255)
+                    if not tracking_allowed:
+                        status_text = "WAITING FOR MANUAL TAKEOFF (GUIDED + ARMED)..."
+                        status_color = (0, 255, 255)
+
+                    cv2.putText(frame, status_text, (20, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2)
                     self.drone.send_velocity_cmd(0,0,0,0)   #No target, maintain position
                         
                 # Display cam feed
@@ -81,6 +93,25 @@ class PersonTracker:
         finally:
             self.cap.release()
             cv2.destroyAllWindows()
+
+    def _tracking_authorized(self):
+        now = time.monotonic()
+        if now - self._last_gate_check >= 0.5:
+            mode, armed = self.drone.refresh_flight_state(timeout=0.0)
+            self._tracking_enabled = armed and mode in self.allowed_modes
+
+            gate_state = (mode, armed, self._tracking_enabled)
+            if gate_state != self._last_gate_state:
+                mode_name = mode or "UNKNOWN"
+                if self._tracking_enabled:
+                    print(f"[PersonTracker] Tracking enabled. Mode={mode_name}, armed={armed}")
+                else:
+                    print(f"[PersonTracker] Tracking paused. Mode={mode_name}, armed={armed}")
+                self._last_gate_state = gate_state
+
+            self._last_gate_check = now
+
+        return self._tracking_enabled
 
     # Helper Functions
     def _calculate_velocities(self, x1, y1, x2, y2):
