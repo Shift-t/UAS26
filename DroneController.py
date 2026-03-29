@@ -1,5 +1,4 @@
 # ***pip install pymavlink
-import time
 from pymavlink import mavutil
 
 class DroneController:
@@ -10,16 +9,12 @@ class DroneController:
         self._last_armed = self._decode_armed(self._last_heartbeat)
 
     def _decode_mode(self, heartbeat):
-        if heartbeat is None:
-            return None
-        return mavutil.mode_string_v10(heartbeat)
+        return self.vehicle.flightmode
 
     def _decode_armed(self, heartbeat):
-        if heartbeat is None:
-            return False
-        return bool(heartbeat.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+        return self.vehicle.motors_armed()
 
-    def refresh_flight_state(self, blocking=False, timeout=0.0):
+    def refresh_flight_state(self, blocking=True, timeout=1.5):
         heartbeat = self.vehicle.recv_match(type='HEARTBEAT', blocking=blocking, timeout=timeout)
         if heartbeat is None:
             heartbeat = self.vehicle.messages.get('HEARTBEAT')
